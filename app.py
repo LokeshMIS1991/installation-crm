@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import random
 import gspread
 from google.oauth2.service_account import Credentials
@@ -58,7 +58,45 @@ INDIAN_STATES = [
     "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Other"
 ]
 
+# --- OVERDUE DELIVERY CHECKER FUNCTION ---
+def check_overdue_deliveries(df):
+    overdue_list = []
+    if not df.empty and "Deliver Date" in df.columns and "Status" in df.columns:
+        today = date.today()
+        for idx, row in df.iterrows():
+            status = str(row.get("Status", "")).strip()
+            deliver_date_str = str(row.get("Deliver Date", "")).strip()
+            client_id = str(row.get("Client ID", ""))
+            client_name = str(row.get("Client Name", ""))
+            
+            # Sirf unhi ko check karega jo "Done" nahi hain
+            if status != "Done" and deliver_date_str:
+                try:
+                    deliver_date = datetime.strptime(deliver_date_str, "%Y-%m-%d").date()
+                    if deliver_date < today:
+                        overdue_list.append({
+                            "Client ID": client_id,
+                            "Client Name": client_name,
+                            "Deliver Date": deliver_date_str,
+                            "Status": status
+                        })
+                except ValueError:
+                    pass  # Correct date format nahi hoga toh skip ho jayega
+    return overdue_list
+
+overdue_items = check_overdue_deliveries(crm_df)
+
+# --- DISPLAY POP-UP ALERT IF OVERDUE ITEMS EXIST ---
+def show_overdue_alert():
+    if overdue_items:
+        st.error(f"🚨 **ALERT: {len(overdue_items)} Delivery Date(s) Overdue!** Pending Completion.")
+        with st.expander("⚠️ View Overdue Delivery Details"):
+            st.table(pd.DataFrame(overdue_items))
+
 st.title("🛠️ Installation CRM")
+
+# Global Pop-up Alert Top Header
+show_overdue_alert()
 
 # Navigation Tabs
 tab_dash, tab_entry, tab_update = st.tabs(["📊 Dashboard", "📝 New Request Entry", "🔄 Edit & Update Request"])
@@ -103,7 +141,6 @@ with tab_dash:
 with tab_entry:
     st.subheader("📝 Register New Installation or Complaint")
     
-    # Short Client ID Format (e.g. CL-4821)
     generated_client_id = f"CL-{random.randint(1000, 9999)}"
     
     with st.form("crm_form", clear_on_submit=True):
@@ -181,11 +218,10 @@ with tab_entry:
             except Exception as e:
                 st.error(f"❌ Failed to save entry to Google Sheet: {e}")
 
-    # --- TOP 10 LATEST ENTRIES SECTION ---
     st.markdown("---")
     st.subheader("📑 Top 10 Recent Registrations")
     if not crm_df.empty:
-        top_10_df = crm_df.tail(10).iloc[::-1]  # Show latest entries first
+        top_10_df = crm_df.tail(10).iloc[::-1]
         st.dataframe(top_10_df, use_container_width=True)
     else:
         st.info("No registrations recorded yet.")
@@ -205,7 +241,7 @@ with tab_update:
         if not matching_rows.empty:
             record_idx = matching_rows.index[0]
             selected_row = crm_df.loc[record_idx]
-            sheet_row_num = record_idx + 2  # Pandas 0 index = Sheet Row 2
+            sheet_row_num = record_idx + 2
             
             st.markdown("---")
             st.subheader(f"✏️ Editing Details for: {selected_row.get('Client Name', '')} (`{selected_client_id}`)")
@@ -255,7 +291,6 @@ with tab_update:
                 
                 if save_update_btn:
                     try:
-                        # Full row update in Google Sheet
                         updated_row_values = [
                             selected_client_id,
                             str(selected_row.get("Complaint Date", "")),
