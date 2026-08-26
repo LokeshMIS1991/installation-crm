@@ -5,7 +5,66 @@ import random
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="Installation CRM", layout="wide", page_icon="🛠️")
+# --- PAGE CONFIGURATION ---
+st.set_page_config(page_title="Enterprise Installation CRM", layout="wide", page_icon="🛠️")
+
+# --- PROFESSIONAL CRM CUSTOM CSS ---
+st.markdown("""
+<style>
+    /* Global Page Styling */
+    .stApp {
+        background-color: #f8f9fa;
+    }
+    
+    /* Headers & Title */
+    h1 {
+        color: #1e293b;
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+    
+    /* Metric Cards Styling */
+    [data-testid="stMetricValue"] {
+        font-size: 28px !important;
+        font-weight: bold !important;
+        color: #0f172a !important;
+    }
+    div[data-testid="metric-container"] {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    
+    /* Tabs Header Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 12px;
+        background-color: #ffffff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 45px;
+        border-radius: 6px;
+        font-weight: 600;
+        color: #64748b;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+    
+    /* Buttons Styling */
+    .stButton>button {
+        border-radius: 6px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # --- GOOGLE SHEETS CONNECTION ---
 SHEET_NAME = "Installation_CRM"
@@ -36,7 +95,7 @@ def load_data():
 
 worksheet, crm_df = load_data()
 
-# --- PRODUCT LIST FROM IMAGE ---
+# --- PRODUCT LIST ---
 PRODUCT_LIST = [
     "Automatic Rolling Shutters", "Dock Leveller", "Dock Shelter", "High-Speed Roll Up Door",
     "High-Speed Fold Up Door", "High-Speed Self Repairable Door", "Residential Sectional Doors",
@@ -58,7 +117,7 @@ INDIAN_STATES = [
     "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Other"
 ]
 
-# --- OVERDUE DELIVERY CHECKER FUNCTION ---
+# --- OVERDUE CHECKER ---
 def check_overdue_deliveries(df):
     overdue_list = []
     if not df.empty and "Deliver Date" in df.columns and "Status" in df.columns:
@@ -69,7 +128,6 @@ def check_overdue_deliveries(df):
             client_id = str(row.get("Client ID", ""))
             client_name = str(row.get("Client Name", ""))
             
-            # Sirf unhi ko check karega jo "Done" nahi hain
             if status != "Done" and deliver_date_str:
                 try:
                     deliver_date = datetime.strptime(deliver_date_str, "%Y-%m-%d").date()
@@ -81,42 +139,70 @@ def check_overdue_deliveries(df):
                             "Status": status
                         })
                 except ValueError:
-                    pass  # Correct date format nahi hoga toh skip ho jayega
+                    pass
     return overdue_list
 
 overdue_items = check_overdue_deliveries(crm_df)
 
-# --- DISPLAY POP-UP ALERT IF OVERDUE ITEMS EXIST ---
 def show_overdue_alert():
     if overdue_items:
-        st.error(f"🚨 **ALERT: {len(overdue_items)} Delivery Date(s) Overdue!** Pending Completion.")
-        with st.expander("⚠️ View Overdue Delivery Details"):
+        st.error(f"🚨 **CRITICAL ALERT: {len(overdue_items)} Overdue Delivery Request(s) Pending Action!**")
+        with st.expander("🔍 View All Overdue Deliveries Details"):
             st.table(pd.DataFrame(overdue_items))
 
-st.title("🛠️ Installation CRM")
+# --- HEADER SECTION ---
+col_head1, col_head2 = st.columns([4, 1])
+with col_head1:
+    st.title("🛠️ Installation & Service CRM")
+    st.caption("Real-Time Operations Management & Lead Tracking Dashboard")
 
-# Global Pop-up Alert Top Header
 show_overdue_alert()
 
-# Navigation Tabs
-tab_dash, tab_entry, tab_update = st.tabs(["📊 Dashboard", "📝 New Request Entry", "🔄 Edit & Update Request"])
+# NAVIGATION TABS
+tab_dash, tab_entry, tab_update = st.tabs(["📊 Analytics Dashboard", "📝 Register New Request", "🔄 Edit, Update & Delete Lead"])
 
 # ==========================================
-# --- TAB 1: EXECUTIVE DASHBOARD ---
+# --- TAB 1: ANALYTICS DASHBOARD ---
 # ==========================================
 with tab_dash:
-    st.subheader("📌 Performance Overview")
-    df = crm_df
+    st.subheader("📌 Executive Performance Overview")
+    df = crm_df.copy()
     
-    if not df.empty and "Status" in df.columns:
-        total_entries = len(df)
-        running_count = len(df[df["Status"] == "Running"])
-        hold_count = len(df[df["Status"] == "Hold"])
-        done_count = len(df[df["Status"] == "Done"])
+    if not df.empty and "Complaint Date" in df.columns:
+        # Date parsing for Month & Year Filters
+        df['Parsed_Date'] = pd.to_datetime(df['Complaint Date'], errors='coerce')
+        df['Year'] = df['Parsed_Date'].dt.year.fillna(0).astype(int)
+        df['Month_Name'] = df['Parsed_Date'].dt.strftime('%B').fillna("Unknown")
+        
+        # --- MONTH & YEAR FILTER ROW ---
+        st.markdown("##### 📅 Filter History Data by Request Date")
+        col_f1, col_f2 = st.columns(2)
+        
+        available_years = ["All Years"] + sorted([y for y in df['Year'].unique() if y != 0], reverse=True)
+        selected_year = col_f1.selectbox("Select Year", available_years)
+        
+        months_list = ["All Months", "January", "February", "March", "April", "May", "June", 
+                       "July", "August", "September", "October", "November", "December"]
+        selected_month = col_f2.selectbox("Select Month", months_list)
+        
+        # Apply Date Filters
+        filtered_df = df.copy()
+        if selected_year != "All Years":
+            filtered_df = filtered_df[filtered_df['Year'] == int(selected_year)]
+        if selected_month != "All Months":
+            filtered_df = filtered_df[filtered_df['Month_Name'] == selected_month]
+            
+        st.markdown("---")
+        
+        # Metrics Cards
+        total_entries = len(filtered_df)
+        running_count = len(filtered_df[filtered_df["Status"] == "Running"])
+        hold_count = len(filtered_df[filtered_df["Status"] == "Hold"])
+        done_count = len(filtered_df[filtered_df["Status"] == "Done"])
         
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         col_m1.metric("📋 Total Requests", total_entries)
-        col_m2.metric("🔄 Running", running_count)
+        col_m2.metric("🔄 Active Running", running_count)
         col_m3.metric("⏸️ On Hold", hold_count)
         col_m4.metric("✅ Completed (Done)", done_count)
         
@@ -124,32 +210,33 @@ with tab_dash:
         
         col_d1, col_d2 = st.columns([2, 1])
         with col_d1:
-            st.subheader("📋 All Registered Service Requests")
-            st.dataframe(df, use_container_width=True)
+            st.subheader("📋 Service Records Data")
+            display_cols = [c for c in ["Client ID", "Complaint Date", "Client Name", "Type", "City", "Status", "Installer"] if c in filtered_df.columns]
+            st.dataframe(filtered_df[display_cols], use_container_width=True)
             
         with col_d2:
-            st.subheader("📊 Request Types")
-            if "Type" in df.columns:
-                type_counts = df["Type"].value_counts()
+            st.subheader("📊 Category Distribution")
+            if "Type" in filtered_df.columns and not filtered_df.empty:
+                type_counts = filtered_df["Type"].value_counts()
                 st.bar_chart(type_counts)
     else:
-        st.info("No records found in Google Sheet. Please register a new entry.")
+        st.info("No records available in Google Sheet. Please add new entries.")
 
 # ==========================================
-# --- TAB 2: NEW REQUEST ENTRY ---
+# --- TAB 2: REGISTER NEW REQUEST ---
 # ==========================================
 with tab_entry:
-    st.subheader("📝 Register New Installation or Complaint")
+    st.subheader("📝 Register New Client Service Request")
     
     generated_client_id = f"CL-{random.randint(1000, 9999)}"
     
-    with st.form("crm_form", clear_on_submit=True):
-        st.info(f"🆔 **Auto-Generated Client ID:** `{generated_client_id}`")
+    with st.form("crm_entry_form", clear_on_submit=True):
+        st.info(f"🆔 **System Generated Client ID:** `{generated_client_id}`")
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            req_type = st.selectbox("Reason or Type*", ["Installation", "Complaint", "Repairing"])
-            complaint_date = st.date_input("Complaint / Request Date", datetime.now())
+            req_type = st.selectbox("Reason or Request Type*", ["Installation", "Complaint", "Repairing"])
+            complaint_date = st.date_input("Complaint / Request Date*", datetime.now())
         with col2:
             client_name = st.text_input("Client Name*")
             company_name = st.text_input("Company Name")
@@ -168,14 +255,14 @@ with tab_entry:
             address = st.text_area("Specific Address", height=68, placeholder="Street, Landmark, Pincode...")
 
         st.markdown("---")
-        st.subheader("👨‍🔧 Team Assignment & Initial Status")
+        st.subheader("👨‍🔧 Team Assignment & Initial Schedule")
         col6, col7, col8 = st.columns(3)
         with col6:
             installer_name = st.text_input("Installer Name")
         with col7:
             helper_name = st.text_input("Helper Name")
         with col8:
-            status = st.selectbox("Status*", ["Running", "Hold", "Done"])
+            status = st.selectbox("Initial Status*", ["Running", "Hold", "Done"])
 
         col9, col10, col11 = st.columns(3)
         with col9:
@@ -186,11 +273,11 @@ with tab_entry:
             deliver_date = st.date_input("Deliver Date", datetime.now())
 
         remarks = st.text_area("Remarks / Initial Notes")
-        submit_btn = st.form_submit_button("Submit Request")
+        submit_btn = st.form_submit_button("Submit & Save Record")
 
     if submit_btn:
         if not client_name or not contact_number or not city_input:
-            st.error("⚠️ Please fill in all required fields: Client Name, Contact Number, and City.")
+            st.error("⚠️ Mandatory Fields Missing! Please fill: Client Name, Contact Number, and City.")
         else:
             new_row = [
                 generated_client_id,
@@ -213,10 +300,10 @@ with tab_entry:
             ]
             try:
                 worksheet.append_row(new_row)
-                st.success(f"✅ Record successfully saved! Client ID: {generated_client_id}")
+                st.success(f"✅ Record successfully created & saved to Google Sheet! Client ID: {generated_client_id}")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ Failed to save entry to Google Sheet: {e}")
+                st.error(f"❌ Database Error: {e}")
 
     st.markdown("---")
     st.subheader("📑 Top 10 Recent Registrations")
@@ -227,14 +314,14 @@ with tab_entry:
         st.info("No registrations recorded yet.")
 
 # ==========================================
-# --- TAB 3: EDIT & UPDATE REQUEST ---
+# --- TAB 3: EDIT, UPDATE & DELETE ---
 # ==========================================
 with tab_update:
-    st.subheader("🔄 Edit Any Entry & Live Update Tracking")
+    st.subheader("🔄 Update Lead Details or Remove Entry")
     
     if not crm_df.empty and "Client ID" in crm_df.columns:
         client_list = crm_df["Client ID"].astype(str).tolist()
-        selected_client_id = st.selectbox("Select Client ID to Edit/Update:", client_list)
+        selected_client_id = st.selectbox("🔍 Search & Select Client ID to Modify:", client_list)
         
         matching_rows = crm_df[crm_df["Client ID"].astype(str) == selected_client_id]
         
@@ -260,7 +347,7 @@ with tab_update:
                     type_options = ["Installation", "Complaint", "Repairing"]
                     curr_type = str(selected_row.get("Type", ""))
                     t_idx = type_options.index(curr_type) if curr_type in type_options else 0
-                    e_type = st.selectbox("Reason or Type", type_options, index=t_idx)
+                    e_type = st.selectbox("Request Type", type_options, index=t_idx)
                     
                     e_city = st.text_input("City", value=str(selected_row.get("City", "")))
                 with col_e3:
@@ -281,19 +368,19 @@ with tab_update:
                     e_installer = st.text_input("Installer Name", value=str(selected_row.get("Installer", "")))
                     e_helper = st.text_input("Helper Name", value=str(selected_row.get("Helper", "")))
                 with col_e5:
+                    e_complaint_date = st.text_input("Request Date (YYYY-MM-DD)", value=str(selected_row.get("Complaint Date", "")))
                     e_start_date = st.text_input("Start Date (YYYY-MM-DD)", value=str(selected_row.get("Start Date", "")))
-                    e_end_date = st.text_input("End Date (YYYY-MM-DD)", value=str(selected_row.get("End Date", "")))
                 with col_e6:
                     e_deliver_date = st.text_input("Deliver Date (YYYY-MM-DD)", value=str(selected_row.get("Deliver Date", "")))
                     e_remarks = st.text_area("Remarks / Notes", value=str(selected_row.get("Remarks", "")), height=68)
 
-                save_update_btn = st.form_submit_button("Update Entire Record in Google Sheet")
+                save_update_btn = st.form_submit_button("💾 Save & Sync Changes")
                 
                 if save_update_btn:
                     try:
                         updated_row_values = [
                             selected_client_id,
-                            str(selected_row.get("Complaint Date", "")),
+                            e_complaint_date,
                             e_client_name,
                             e_company_name,
                             e_contact,
@@ -306,7 +393,7 @@ with tab_update:
                             e_helper,
                             e_status,
                             e_start_date,
-                            e_end_date,
+                            str(selected_row.get("End Date", "")),
                             e_deliver_date,
                             e_remarks
                         ]
@@ -318,5 +405,19 @@ with tab_update:
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error updating Google Sheet: {e}")
+
+            # --- DELETE ENTRY SECTION ---
+            st.markdown("---")
+            st.subheader("🚨 Danger Zone (Delete Record)")
+            
+            with st.expander("🗑️ Delete This Client Entry Permanently"):
+                st.warning(f"Are you sure you want to delete Client ID: **{selected_client_id}** ({selected_row.get('Client Name', '')})? This action cannot be undone.")
+                if st.button("Yes, Delete Entry Permanently", type="primary"):
+                    try:
+                        worksheet.delete_rows(sheet_row_num)
+                        st.success(f"🗑️ Record {selected_client_id} has been permanently deleted from Google Sheet!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Delete action failed: {e}")
     else:
-        st.info("No records available to edit/update.")
+        st.info("No records available to edit or delete.")
