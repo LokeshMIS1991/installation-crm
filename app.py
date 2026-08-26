@@ -1,8 +1,39 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Installation CRM", layout="wide", page_icon="🛠️")
+
+# --- GOOGLE SHEETS CONNECTION ---
+SHEET_NAME = "Installation_CRM"
+
+@st.cache_resource
+def get_gspread_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+    return gspread.authorize(credentials)
+
+def load_data():
+    try:
+        gc = get_gspread_client()
+        sh = gc.open(SHEET_NAME)
+        worksheet = sh.worksheet("Sheet1")
+        records = worksheet.get_all_records()
+        df = pd.DataFrame(records)
+        return worksheet, df
+    except Exception as e:
+        st.error(f"❌ Google Sheet Connection Error: {e}")
+        return None, pd.DataFrame()
+
+worksheet, crm_df = load_data()
 
 # --- INDIA STATES & CITIES DATA ---
 INDIA_DATA = {
@@ -21,68 +52,6 @@ INDIA_DATA = {
     "Other": ["Other"]
 }
 
-# --- DUMMY DATA INITIALIZATION (Simulating Google Sheets) ---
-if "crm_data" not in st.session_state:
-    st.session_state.crm_data = pd.DataFrame([
-        {
-            "Client ID": "CL-20260824100001",
-            "Complaint Date": "2026-08-20",
-            "Client Name": "Rajesh Kumar",
-            "Company Name": "ABC Infra",
-            "Contact Number": "9876543210",
-            "Type": "Installation",
-            "Product": "CCTV Camera",
-            "State": "Delhi",
-            "City": "New Delhi",
-            "Address": "Connaught Place",
-            "Installer": "Amit Sharma",
-            "Helper": "Ramesh",
-            "Status": "Running",
-            "Start Date": "2026-08-21",
-            "End Date": "2026-08-25",
-            "Deliver Date": "2026-08-26",
-            "Remarks": "Wiring in progress"
-        },
-        {
-            "Client ID": "CL-20260824100002",
-            "Complaint Date": "2026-08-22",
-            "Client Name": "Global Tech Ltd",
-            "Company Name": "Global Tech",
-            "Contact Number": "9123456789",
-            "Type": "Complaint",
-            "Product": "Water Purifier",
-            "State": "Uttar Pradesh",
-            "City": "Noida",
-            "Address": "Sector 62",
-            "Installer": "Vikas Verma",
-            "Helper": "Suresh",
-            "Status": "Done",
-            "Start Date": "2026-08-22",
-            "End Date": "2026-08-23",
-            "Deliver Date": "2026-08-23",
-            "Remarks": "Filter replaced successfully"
-        },
-        {
-            "Client ID": "CL-20260824100003",
-            "Complaint Date": "2026-08-23",
-            "Client Name": "Sunil Verma",
-            "Company Name": "Sunil Enterprises",
-            "Contact Number": "9988776655",
-            "Type": "Repairing",
-            "Product": "Solar Inverter",
-            "State": "Rajasthan",
-            "City": "Jaipur",
-            "Address": "Malviya Nagar",
-            "Installer": "Karan Singh",
-            "Helper": "Mahesh",
-            "Status": "Hold",
-            "Start Date": "2026-08-24",
-            "End Date": "2026-08-28",
-            "Deliver Date": "2026-08-29",
-            "Remarks": "Waiting for spare parts arrival"
-        }
-    ])
-
 st.title("🛠️ Installation CRM")
 
 # Navigation Tabs
@@ -93,33 +62,35 @@ tab_dash, tab_entry, tab_update = st.tabs(["📊 Dashboard", "📝 New Request E
 # ==========================================
 with tab_dash:
     st.subheader("📌 Performance Overview")
-    df = st.session_state.crm_data
+    df = crm_df
     
-    # Key Metric Cards
-    total_entries = len(df)
-    running_count = len(df[df["Status"] == "Running"])
-    hold_count = len(df[df["Status"] == "Hold"])
-    done_count = len(df[df["Status"] == "Done"])
-    
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("📋 Total Requests", total_entries)
-    col_m2.metric("🔄 Running", running_count, delta_color="normal")
-    col_m3.metric("⏸️ On Hold", hold_count, delta_color="inverse")
-    col_m4.metric("✅ Completed (Done)", done_count)
-    
-    st.markdown("---")
-    
-    # Breakdowns & Filtered View
-    col_d1, col_d2 = st.columns([2, 1])
-    
-    with col_d1:
-        st.subheader("📋 Recent Service Requests")
-        st.dataframe(df[["Client ID", "Client Name", "Type", "City", "Status", "Installer"]], use_container_width=True)
+    if not df.empty and "Status" in df.columns:
+        total_entries = len(df)
+        running_count = len(df[df["Status"] == "Running"])
+        hold_count = len(df[df["Status"] == "Hold"])
+        done_count = len(df[df["Status"] == "Done"])
         
-    with col_d2:
-        st.subheader("📊 Request Types")
-        type_counts = df["Type"].value_counts()
-        st.bar_chart(type_counts)
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        col_m1.metric("📋 Total Requests", total_entries)
+        col_m2.metric("🔄 Running", running_count)
+        col_m3.metric("⏸️ On Hold", hold_count)
+        col_m4.metric("✅ Completed (Done)", done_count)
+        
+        st.markdown("---")
+        
+        col_d1, col_d2 = st.columns([2, 1])
+        with col_d1:
+            st.subheader("📋 Recent Service Requests")
+            display_cols = [col for col in ["Client ID", "Client Name", "Type", "City", "Status", "Installer"] if col in df.columns]
+            st.dataframe(df[display_cols], use_container_width=True)
+            
+        with col_d2:
+            st.subheader("📊 Request Types")
+            if "Type" in df.columns:
+                type_counts = df["Type"].value_counts()
+                st.bar_chart(type_counts)
+    else:
+        st.info("Abhi Google Sheet mein koi data nahi hai. Nayi entry add karein!")
 
 # ==========================================
 # --- TAB 2: NEW REQUEST ENTRY ---
@@ -179,28 +150,31 @@ with tab_entry:
         if not client_name or not contact_number:
             st.error("⚠️ Please fill required fields: Client Name and Contact Number!")
         else:
-            new_record = {
-                "Client ID": generated_client_id,
-                "Complaint Date": str(complaint_date),
-                "Client Name": client_name,
-                "Company Name": company_name,
-                "Contact Number": contact_number,
-                "Type": req_type,
-                "Product": product_details,
-                "State": state_selected,
-                "City": custom_city,
-                "Address": address,
-                "Installer": installer_name,
-                "Helper": helper_name,
-                "Status": status,
-                "Start Date": str(start_date),
-                "End Date": str(end_date),
-                "Deliver Date": str(deliver_date),
-                "Remarks": remarks
-            }
-            # Add to dataframe
-            st.session_state.crm_data = pd.concat([st.session_state.crm_data, pd.DataFrame([new_record])], ignore_index=True)
-            st.success(f"✅ Record saved! Client ID: {generated_client_id}")
+            new_row = [
+                generated_client_id,
+                str(complaint_date),
+                client_name,
+                company_name,
+                contact_number,
+                req_type,
+                product_details,
+                state_selected,
+                custom_city,
+                address,
+                installer_name,
+                helper_name,
+                status,
+                str(start_date),
+                str(end_date),
+                str(deliver_date),
+                remarks
+            ]
+            try:
+                worksheet.append_row(new_row)
+                st.success(f"✅ Record saved directly to Google Sheet! Client ID: {generated_client_id}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Failed to save entry to Google Sheet: {e}")
 
 # ==========================================
 # --- TAB 3: UPDATE STATUS & EDIT DATA ---
@@ -208,58 +182,68 @@ with tab_entry:
 with tab_update:
     st.subheader("🔄 Update Lead Status & Tracking")
     
-    # Filter Records by Status
-    status_filter = st.radio("Filter List By Status:", ["All", "Running", "Hold", "Done"], horizontal=True)
-    
-    filtered_df = st.session_state.crm_data
-    if status_filter != "All":
-        filtered_df = filtered_df[filtered_df["Status"] == status_filter]
+    if not crm_df.empty and "Client ID" in crm_df.columns:
+        status_filter = st.radio("Filter List By Status:", ["All", "Running", "Hold", "Done"], horizontal=True)
         
-    st.dataframe(filtered_df, use_container_width=True)
-    
-    st.markdown("---")
-    st.subheader("✏️ Edit Request Details")
-    
-    # Select Client ID to Update
-    client_list = st.session_state.crm_data["Client ID"].tolist()
-    
-    if client_list:
-        selected_client_id = st.selectbox("Select Client ID to Update:", client_list)
-        
-        # Fetch existing record
-        record_idx = st.session_state.crm_data[st.session_state.crm_data["Client ID"] == selected_client_id].index[0]
-        selected_row = st.session_state.crm_data.loc[record_idx]
-        
-        with st.form("update_form"):
-            st.write(f"Updating Details for: **{selected_row['Client Name']}** (`{selected_client_id}`)")
+        filtered_df = crm_df
+        if status_filter != "All" and "Status" in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df["Status"] == status_filter]
             
-            up_col1, up_col2, up_col3 = st.columns(3)
-            with up_col1:
-                # Set default index for Status dropdown
-                status_list = ["Running", "Hold", "Done"]
-                status_idx = status_list.index(selected_row["Status"]) if selected_row["Status"] in status_list else 0
-                new_status = st.selectbox("Update Status*", status_list, index=status_idx)
-                
-            with up_col2:
-                new_installer = st.text_input("Installer Name", value=selected_row["Installer"])
-            with up_col3:
-                new_helper = st.text_input("Helper Name", value=selected_row["Helper"])
-                
-            up_col4, up_col5 = st.columns(2)
-            with up_col4:
-                new_remarks = st.text_area("Update Remarks / Progress Notes", value=selected_row["Remarks"])
-            with up_col5:
-                new_deliver_date = st.text_input("Deliver Date", value=selected_row["Deliver Date"])
-                
-            update_btn = st.form_submit_button("Save Status Update")
+        st.dataframe(filtered_df, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("✏️ Edit Request Details")
+        
+        client_list = crm_df["Client ID"].astype(str).tolist()
+        
+        if client_list:
+            selected_client_id = st.selectbox("Select Client ID to Update:", client_list)
             
-            if update_btn:
-                # Update session state data
-                st.session_state.crm_data.at[record_idx, "Status"] = new_status
-                st.session_state.crm_data.at[record_idx, "Installer"] = new_installer
-                st.session_state.crm_data.at[record_idx, "Helper"] = new_helper
-                st.session_state.crm_data.at[record_idx, "Remarks"] = new_remarks
-                st.session_state.crm_data.at[record_idx, "Deliver Date"] = new_deliver_date
+            # Find row in DataFrame
+            matching_rows = crm_df[crm_df["Client ID"].astype(str) == selected_client_id]
+            if not matching_rows.empty:
+                record_idx = matching_rows.index[0]
+                selected_row = crm_df.loc[record_idx]
                 
-                st.success(f"✅ Status updated to '{new_status}' for {selected_client_id}!")
-                st.rerun()
+                # Google Sheet Header row counts as row 1, pandas index 0 is sheet row 2
+                sheet_row_num = record_idx + 2
+                
+                with st.form("update_form"):
+                    st.write(f"Updating Details for: **{selected_row.get('Client Name', '')}** (`{selected_client_id}`)")
+                    
+                    up_col1, up_col2, up_col3 = st.columns(3)
+                    with up_col1:
+                        status_list = ["Running", "Hold", "Done"]
+                        curr_status = str(selected_row.get("Status", "Running"))
+                        status_idx = status_list.index(curr_status) if curr_status in status_list else 0
+                        new_status = st.selectbox("Update Status*", status_list, index=status_idx)
+                        
+                    with up_col2:
+                        new_installer = st.text_input("Installer Name", value=str(selected_row.get("Installer", "")))
+                    with up_col3:
+                        new_helper = st.text_input("Helper Name", value=str(selected_row.get("Helper", "")))
+                        
+                    up_col4, up_col5 = st.columns(2)
+                    with up_col4:
+                        new_remarks = st.text_area("Update Remarks / Progress Notes", value=str(selected_row.get("Remarks", "")))
+                    with up_col5:
+                        new_deliver_date = st.text_input("Deliver Date", value=str(selected_row.get("Deliver Date", "")))
+                        
+                    update_btn = st.form_submit_button("Save Status Update")
+                    
+                    if update_btn:
+                        try:
+                            # Update specific cells in Google Sheet
+                            # K=Installer (Col 11), L=Helper (Col 12), M=Status (Col 13), P=Deliver Date (Col 16), Q=Remarks (Col 17)
+                            worksheet.update_cell(sheet_row_num, 11, new_installer)
+                            worksheet.update_cell(sheet_row_num, 12, new_helper)
+                            worksheet.update_cell(sheet_row_num, 13, new_status)
+                            worksheet.update_cell(sheet_row_num, 16, new_deliver_date)
+                            worksheet.update_cell(sheet_row_num, 17, new_remarks)
+                            
+                            st.success(f"✅ Google Sheet updated successfully for {selected_client_id}!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error updating sheet: {e}")
+    else:
+        st.info("Update karne ke liye filhaal Sheet mein koi data nahi milaa.")
