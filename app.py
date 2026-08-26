@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import random
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -35,27 +36,32 @@ def load_data():
 
 worksheet, crm_df = load_data()
 
-# --- INDIA STATES & CITIES DATA ---
-INDIA_DATA = {
-    "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Tirupati", "Other"],
-    "Bihar": ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Other"],
-    "Delhi": ["New Delhi", "North Delhi", "South Delhi", "East Delhi", "West Delhi", "Other"],
-    "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Other"],
-    "Haryana": ["Gurugram", "Faridabad", "Panipat", "Ambala", "Other"],
-    "Karnataka": ["Bengaluru", "Mysuru", "Hubballi", "Other"],
-    "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Other"],
-    "Punjab": ["Ludhiana", "Amritsar", "Jalandhar", "Mohali", "Other"],
-    "Rajasthan": ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Other"],
-    "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Other"],
-    "Uttar Pradesh": ["Noida", "Ghaziabad", "Lucknow", "Kanpur", "Agra", "Varanasi", "Other"],
-    "West Bengal": ["Kolkata", "Howrah", "Durgapur", "Siliguri", "Other"],
-    "Other": ["Other"]
-}
+# --- PRODUCT LIST FROM IMAGE ---
+PRODUCT_LIST = [
+    "Automatic Rolling Shutters", "Dock Leveller", "Dock Shelter", "High-Speed Roll Up Door",
+    "High-Speed Fold Up Door", "High-Speed Self Repairable Door", "Residential Sectional Doors",
+    "Industrial Sectional Door", "Hermetic Doors", "Fire Exit Door", "Auto Sliding Door",
+    "Motorised Swing Gates", "Motorised Sliding Gates", "Retractable Gates", "Boom Barriers",
+    "Strong Life Shutter Motor", "Manual Shutters", "Wind Shutters", "Spare Part",
+    "Service Charge", "Sensor / Automatic Glass Door", "Motors", "Dock Bumper",
+    "Dock Edge", "Overhead Sectional Door", "Gate", "Tank Door Shutter", "Gear Shutter",
+    "General purpose Doors", "Hanger Door", "Impact Barrier", "Manual Swing Gate",
+    "Manual Sliding Gate", "Other"
+]
+
+# --- INDIA STATES LIST ---
+INDIAN_STATES = [
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa",
+    "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala",
+    "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland",
+    "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+    "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Other"
+]
 
 st.title("🛠️ Installation CRM")
 
 # Navigation Tabs
-tab_dash, tab_entry, tab_update = st.tabs(["📊 Dashboard", "📝 New Request Entry", "🔄 Update & View Status"])
+tab_dash, tab_entry, tab_update = st.tabs(["📊 Dashboard", "📝 New Request Entry", "🔄 Edit & Update Request"])
 
 # ==========================================
 # --- TAB 1: EXECUTIVE DASHBOARD ---
@@ -80,9 +86,8 @@ with tab_dash:
         
         col_d1, col_d2 = st.columns([2, 1])
         with col_d1:
-            st.subheader("📋 Recent Service Requests")
-            display_cols = [col for col in ["Client ID", "Client Name", "Type", "City", "Status", "Installer"] if col in df.columns]
-            st.dataframe(df[display_cols], use_container_width=True)
+            st.subheader("📋 All Registered Service Requests")
+            st.dataframe(df, use_container_width=True)
             
         with col_d2:
             st.subheader("📊 Request Types")
@@ -97,7 +102,9 @@ with tab_dash:
 # ==========================================
 with tab_entry:
     st.subheader("📝 Register New Installation or Complaint")
-    generated_client_id = f"CL-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    # Short Client ID Format (e.g. CL-4821)
+    generated_client_id = f"CL-{random.randint(1000, 9999)}"
     
     with st.form("crm_form", clear_on_submit=True):
         st.info(f"🆔 **Auto-Generated Client ID:** `{generated_client_id}`")
@@ -111,17 +118,15 @@ with tab_entry:
             company_name = st.text_input("Company Name")
         with col3:
             contact_number = st.text_input("Contact Number*")
-            product_details = st.text_input("Product Suggested / Type", placeholder="e.g. CCTV, Water Purifier, Model X")
+            product_details = st.selectbox("Product Name*", PRODUCT_LIST)
 
         st.markdown("---")
         st.subheader("📍 Location Details")
         col_st, col_ct, col_addr = st.columns(3)
         with col_st:
-            state_selected = st.selectbox("State*", sorted(list(INDIA_DATA.keys())))
+            state_selected = st.selectbox("State*", INDIAN_STATES)
         with col_ct:
-            city_options = INDIA_DATA.get(state_selected, ["Other"])
-            city_selected = st.selectbox("City*", city_options)
-            custom_city = st.text_input("Specify City Name*") if city_selected == "Other" else city_selected
+            city_input = st.text_input("City Name*", placeholder="Enter City Manually")
         with col_addr:
             address = st.text_area("Specific Address", height=68, placeholder="Street, Landmark, Pincode...")
 
@@ -147,8 +152,8 @@ with tab_entry:
         submit_btn = st.form_submit_button("Submit Request")
 
     if submit_btn:
-        if not client_name or not contact_number:
-            st.error("⚠️ Please fill in all required fields: Client Name and Contact Number.")
+        if not client_name or not contact_number or not city_input:
+            st.error("⚠️ Please fill in all required fields: Client Name, Contact Number, and City.")
         else:
             new_row = [
                 generated_client_id,
@@ -159,7 +164,7 @@ with tab_entry:
                 req_type,
                 product_details,
                 state_selected,
-                custom_city,
+                city_input,
                 address,
                 installer_name,
                 helper_name,
@@ -176,71 +181,107 @@ with tab_entry:
             except Exception as e:
                 st.error(f"❌ Failed to save entry to Google Sheet: {e}")
 
+    # --- TOP 10 LATEST ENTRIES SECTION ---
+    st.markdown("---")
+    st.subheader("📑 Top 10 Recent Registrations")
+    if not crm_df.empty:
+        top_10_df = crm_df.tail(10).iloc[::-1]  # Show latest entries first
+        st.dataframe(top_10_df, use_container_width=True)
+    else:
+        st.info("No registrations recorded yet.")
+
 # ==========================================
-# --- TAB 3: UPDATE STATUS & EDIT DATA ---
+# --- TAB 3: EDIT & UPDATE REQUEST ---
 # ==========================================
 with tab_update:
-    st.subheader("🔄 Update Lead Status & Tracking")
+    st.subheader("🔄 Edit Any Entry & Live Update Tracking")
     
     if not crm_df.empty and "Client ID" in crm_df.columns:
-        status_filter = st.radio("Filter List By Status:", ["All", "Running", "Hold", "Done"], horizontal=True)
-        
-        filtered_df = crm_df
-        if status_filter != "All" and "Status" in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df["Status"] == status_filter]
-            
-        st.dataframe(filtered_df, use_container_width=True)
-        
-        st.markdown("---")
-        st.subheader("✏️ Edit Request Details")
-        
         client_list = crm_df["Client ID"].astype(str).tolist()
+        selected_client_id = st.selectbox("Select Client ID to Edit/Update:", client_list)
         
-        if client_list:
-            selected_client_id = st.selectbox("Select Client ID to Update:", client_list)
+        matching_rows = crm_df[crm_df["Client ID"].astype(str) == selected_client_id]
+        
+        if not matching_rows.empty:
+            record_idx = matching_rows.index[0]
+            selected_row = crm_df.loc[record_idx]
+            sheet_row_num = record_idx + 2  # Pandas 0 index = Sheet Row 2
             
-            # Find row in DataFrame
-            matching_rows = crm_df[crm_df["Client ID"].astype(str) == selected_client_id]
-            if not matching_rows.empty:
-                record_idx = matching_rows.index[0]
-                selected_row = crm_df.loc[record_idx]
-                
-                sheet_row_num = record_idx + 2
-                
-                with st.form("update_form"):
-                    st.write(f"Updating Details for: **{selected_row.get('Client Name', '')}** (`{selected_client_id}`)")
+            st.markdown("---")
+            st.subheader(f"✏️ Editing Details for: {selected_row.get('Client Name', '')} (`{selected_client_id}`)")
+            
+            with st.form("full_edit_form"):
+                col_e1, col_e2, col_e3 = st.columns(3)
+                with col_e1:
+                    e_client_name = st.text_input("Client Name", value=str(selected_row.get("Client Name", "")))
+                    e_company_name = st.text_input("Company Name", value=str(selected_row.get("Company Name", "")))
+                    e_contact = st.text_input("Contact Number", value=str(selected_row.get("Contact Number", "")))
+                with col_e2:
+                    curr_prod = str(selected_row.get("Product", ""))
+                    p_idx = PRODUCT_LIST.index(curr_prod) if curr_prod in PRODUCT_LIST else 0
+                    e_product = st.selectbox("Product Name", PRODUCT_LIST, index=p_idx)
                     
-                    up_col1, up_col2, up_col3 = st.columns(3)
-                    with up_col1:
-                        status_list = ["Running", "Hold", "Done"]
-                        curr_status = str(selected_row.get("Status", "Running"))
-                        status_idx = status_list.index(curr_status) if curr_status in status_list else 0
-                        new_status = st.selectbox("Update Status*", status_list, index=status_idx)
-                        
-                    with up_col2:
-                        new_installer = st.text_input("Installer Name", value=str(selected_row.get("Installer", "")))
-                    with up_col3:
-                        new_helper = st.text_input("Helper Name", value=str(selected_row.get("Helper", "")))
-                        
-                    up_col4, up_col5 = st.columns(2)
-                    with up_col4:
-                        new_remarks = st.text_area("Update Remarks / Progress Notes", value=str(selected_row.get("Remarks", "")))
-                    with up_col5:
-                        new_deliver_date = st.text_input("Deliver Date", value=str(selected_row.get("Deliver Date", "")))
-                        
-                    update_btn = st.form_submit_button("Save Status Update")
+                    type_options = ["Installation", "Complaint", "Repairing"]
+                    curr_type = str(selected_row.get("Type", ""))
+                    t_idx = type_options.index(curr_type) if curr_type in type_options else 0
+                    e_type = st.selectbox("Reason or Type", type_options, index=t_idx)
                     
-                    if update_btn:
-                        try:
-                            worksheet.update_cell(sheet_row_num, 11, new_installer)
-                            worksheet.update_cell(sheet_row_num, 12, new_helper)
-                            worksheet.update_cell(sheet_row_num, 13, new_status)
-                            worksheet.update_cell(sheet_row_num, 16, new_deliver_date)
-                            worksheet.update_cell(sheet_row_num, 17, new_remarks)
-                            
-                            st.success(f"✅ Record updated successfully for Client ID: {selected_client_id}")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error updating sheet: {e}")
+                    e_city = st.text_input("City", value=str(selected_row.get("City", "")))
+                with col_e3:
+                    curr_st = str(selected_row.get("State", ""))
+                    st_idx = INDIAN_STATES.index(curr_st) if curr_st in INDIAN_STATES else 0
+                    e_state = st.selectbox("State", INDIAN_STATES, index=st_idx)
+                    
+                    status_options = ["Running", "Hold", "Done"]
+                    curr_stat = str(selected_row.get("Status", "Running"))
+                    s_idx = status_options.index(curr_stat) if curr_stat in status_options else 0
+                    e_status = st.selectbox("Status", status_options, index=s_idx)
+                    
+                    e_address = st.text_area("Address", value=str(selected_row.get("Address", "")), height=68)
+
+                st.markdown("---")
+                col_e4, col_e5, col_e6 = st.columns(3)
+                with col_e4:
+                    e_installer = st.text_input("Installer Name", value=str(selected_row.get("Installer", "")))
+                    e_helper = st.text_input("Helper Name", value=str(selected_row.get("Helper", "")))
+                with col_e5:
+                    e_start_date = st.text_input("Start Date (YYYY-MM-DD)", value=str(selected_row.get("Start Date", "")))
+                    e_end_date = st.text_input("End Date (YYYY-MM-DD)", value=str(selected_row.get("End Date", "")))
+                with col_e6:
+                    e_deliver_date = st.text_input("Deliver Date (YYYY-MM-DD)", value=str(selected_row.get("Deliver Date", "")))
+                    e_remarks = st.text_area("Remarks / Notes", value=str(selected_row.get("Remarks", "")), height=68)
+
+                save_update_btn = st.form_submit_button("Update Entire Record in Google Sheet")
+                
+                if save_update_btn:
+                    try:
+                        # Full row update in Google Sheet
+                        updated_row_values = [
+                            selected_client_id,
+                            str(selected_row.get("Complaint Date", "")),
+                            e_client_name,
+                            e_company_name,
+                            e_contact,
+                            e_type,
+                            e_product,
+                            e_state,
+                            e_city,
+                            e_address,
+                            e_installer,
+                            e_helper,
+                            e_status,
+                            e_start_date,
+                            e_end_date,
+                            e_deliver_date,
+                            e_remarks
+                        ]
+                        
+                        cell_range = f"A{sheet_row_num}:Q{sheet_row_num}"
+                        worksheet.update(cell_range, [updated_row_values])
+                        
+                        st.success(f"✅ Record successfully updated in Google Sheet for Client ID: {selected_client_id}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error updating Google Sheet: {e}")
     else:
-        st.info("No records available to update. Please submit a request first.")
+        st.info("No records available to edit/update.")
