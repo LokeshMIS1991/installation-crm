@@ -90,7 +90,7 @@ with tab_dash:
                 type_counts = df["Type"].value_counts()
                 st.bar_chart(type_counts)
     else:
-        st.info("Abhi Google Sheet mein koi data nahi hai. Nayi entry add karein!")
+        st.info("No records found in Google Sheet. Please register a new entry.")
 
 # ==========================================
 # --- TAB 2: NEW REQUEST ENTRY ---
@@ -148,7 +148,7 @@ with tab_entry:
 
     if submit_btn:
         if not client_name or not contact_number:
-            st.error("⚠️ Please fill required fields: Client Name and Contact Number!")
+            st.error("⚠️ Please fill in all required fields: Client Name and Contact Number.")
         else:
             new_row = [
                 generated_client_id,
@@ -171,7 +171,7 @@ with tab_entry:
             ]
             try:
                 worksheet.append_row(new_row)
-                st.success(f"✅ Record saved directly to Google Sheet! Client ID: {generated_client_id}")
+                st.success(f"✅ Record successfully saved! Client ID: {generated_client_id}")
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Failed to save entry to Google Sheet: {e}")
@@ -205,7 +205,6 @@ with tab_update:
                 record_idx = matching_rows.index[0]
                 selected_row = crm_df.loc[record_idx]
                 
-                # Google Sheet Header row counts as row 1, pandas index 0 is sheet row 2
                 sheet_row_num = record_idx + 2
                 
                 with st.form("update_form"):
@@ -233,17 +232,15 @@ with tab_update:
                     
                     if update_btn:
                         try:
-                            # Update specific cells in Google Sheet
-                            # K=Installer (Col 11), L=Helper (Col 12), M=Status (Col 13), P=Deliver Date (Col 16), Q=Remarks (Col 17)
                             worksheet.update_cell(sheet_row_num, 11, new_installer)
                             worksheet.update_cell(sheet_row_num, 12, new_helper)
                             worksheet.update_cell(sheet_row_num, 13, new_status)
                             worksheet.update_cell(sheet_row_num, 16, new_deliver_date)
                             worksheet.update_cell(sheet_row_num, 17, new_remarks)
                             
-                            st.success(f"✅ Google Sheet updated successfully for {selected_client_id}!")
+                            st.success(f"✅ Record updated successfully for Client ID: {selected_client_id}")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Error updating sheet: {e}")
     else:
-        st.info("Update karne ke liye filhaal Sheet mein koi data nahi milaa.")
+        st.info("No records available to update. Please submit a request first.")
