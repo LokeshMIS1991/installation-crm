@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-import random
+import re
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -94,6 +94,23 @@ def load_data():
         return None, pd.DataFrame()
 
 worksheet, crm_df = load_data()
+
+# --- FUNCTION TO GENERATE SEQUENTIAL CLIENT ID ---
+def generate_next_client_id(df):
+    if df.empty or "Client ID" not in df.columns:
+        return "CL-001"
+    
+    max_num = 0
+    # Search through all Client IDs to find the highest number
+    for cid in df["Client ID"].dropna().astype(str):
+        match = re.search(r'CL-(\d+)', cid, re.IGNORECASE)
+        if match:
+            num = int(match.group(1))
+            if num > max_num:
+                max_num = num
+                
+    next_num = max_num + 1
+    return f"CL-{next_num:03d}"
 
 # --- PRODUCT LIST ---
 PRODUCT_LIST = [
@@ -226,10 +243,11 @@ with tab_dash:
 with tab_entry:
     st.subheader("📝 Register New Client Service Request")
     
-    generated_client_id = f"CL-{random.randint(1000, 9999)}"
+    # Generate Sequential Client ID based on Google Sheet
+    next_client_id = generate_next_client_id(crm_df)
     
     with st.form("crm_entry_form", clear_on_submit=True):
-        st.info(f"🆔 **System Generated Client ID:** `{generated_client_id}`")
+        st.info(f"🆔 **Next Serial Client ID:** `{next_client_id}`")
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -280,8 +298,12 @@ with tab_entry:
         if not client_name or not contact_number or not city_input:
             st.error("⚠️ Mandatory Fields Missing! Please fill: Client Name, Contact Number, and City.")
         else:
+            # Re-fetch fresh worksheet data before submitting to prevent concurrent ID clash
+            _, fresh_df = load_data()
+            final_client_id = generate_next_client_id(fresh_df)
+
             new_row = [
-                generated_client_id,
+                final_client_id,
                 str(complaint_date),
                 client_name,
                 company_name,
@@ -301,7 +323,7 @@ with tab_entry:
             ]
             try:
                 worksheet.append_row(new_row)
-                st.success(f"✅ Record successfully created & saved to Google Sheet! Client ID: {generated_client_id}")
+                st.success(f"✅ Record successfully created with ID: **{final_client_id}**")
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Database Error: {e}")
