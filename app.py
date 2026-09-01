@@ -117,37 +117,40 @@ INDIAN_STATES = [
     "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Other"
 ]
 
-# --- OVERDUE CHECKER ---
-def check_overdue_deliveries(df):
+# --- OVERDUE CHECKER (USING EXPECTED DATE) ---
+def check_overdue_expected_dates(df):
     overdue_list = []
-    if not df.empty and "Deliver Date" in df.columns and "Status" in df.columns:
+    # Check both "Expected Date" and fallback to "Deliver Date" for old column header compatibility
+    date_col = "Expected Date" if "Expected Date" in df.columns else ("Deliver Date" if "Deliver Date" in df.columns else None)
+    
+    if not df.empty and date_col and "Status" in df.columns:
         today = date.today()
         for idx, row in df.iterrows():
             status = str(row.get("Status", "")).strip()
-            deliver_date_str = str(row.get("Deliver Date", "")).strip()
+            exp_date_str = str(row.get(date_col, "")).strip()
             client_id = str(row.get("Client ID", ""))
             client_name = str(row.get("Client Name", ""))
             
-            if status != "Done" and deliver_date_str:
+            if status != "Done" and exp_date_str:
                 try:
-                    deliver_date = datetime.strptime(deliver_date_str, "%Y-%m-%d").date()
-                    if deliver_date < today:
+                    exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+                    if exp_date < today:
                         overdue_list.append({
                             "Client ID": client_id,
                             "Client Name": client_name,
-                            "Deliver Date": deliver_date_str,
+                            "Expected Date": exp_date_str,
                             "Status": status
                         })
                 except ValueError:
                     pass
     return overdue_list
 
-overdue_items = check_overdue_deliveries(crm_df)
+overdue_items = check_overdue_expected_dates(crm_df)
 
 def show_overdue_alert():
     if overdue_items:
-        st.error(f"🚨 **CRITICAL ALERT: {len(overdue_items)} Overdue Delivery Request(s) Pending Action!**")
-        with st.expander("🔍 View All Overdue Deliveries Details"):
+        st.error(f"🚨 **CRITICAL ALERT: {len(overdue_items)} Overdue Expected Date Request(s) Pending Action!**")
+        with st.expander("🔍 View All Overdue Details"):
             st.table(pd.DataFrame(overdue_items))
 
 # --- HEADER SECTION ---
@@ -270,7 +273,7 @@ with tab_entry:
         with col10:
             end_date = st.date_input("End Date", datetime.now())
         with col11:
-            deliver_date = st.date_input("Deliver Date", datetime.now())
+            expected_date = st.date_input("Expected Date", datetime.now())
 
         remarks = st.text_area("Remarks / Initial Notes")
         submit_btn = st.form_submit_button("Submit & Save Record")
@@ -295,7 +298,7 @@ with tab_entry:
                 status,
                 str(start_date),
                 str(end_date),
-                str(deliver_date),
+                str(expected_date),
                 remarks
             ]
             try:
@@ -332,6 +335,9 @@ with tab_update:
             
             st.markdown("---")
             st.subheader(f"✏️ Editing Details for: {selected_row.get('Client Name', '')} (`{selected_client_id}`)")
+            
+            # Key to read safely from previous versions if needed
+            prev_expected = selected_row.get("Expected Date", selected_row.get("Deliver Date", ""))
             
             with st.form("full_edit_form"):
                 col_e1, col_e2, col_e3 = st.columns(3)
@@ -371,7 +377,7 @@ with tab_update:
                     e_complaint_date = st.text_input("Request Date (YYYY-MM-DD)", value=str(selected_row.get("Complaint Date", "")))
                     e_start_date = st.text_input("Start Date (YYYY-MM-DD)", value=str(selected_row.get("Start Date", "")))
                 with col_e6:
-                    e_deliver_date = st.text_input("Deliver Date (YYYY-MM-DD)", value=str(selected_row.get("Deliver Date", "")))
+                    e_expected_date = st.text_input("Expected Date (YYYY-MM-DD)", value=str(prev_expected))
                     e_remarks = st.text_area("Remarks / Notes", value=str(selected_row.get("Remarks", "")), height=68)
 
                 save_update_btn = st.form_submit_button("💾 Save & Sync Changes")
@@ -394,7 +400,7 @@ with tab_update:
                             e_status,
                             e_start_date,
                             str(selected_row.get("End Date", "")),
-                            e_deliver_date,
+                            e_expected_date,
                             e_remarks
                         ]
                         
