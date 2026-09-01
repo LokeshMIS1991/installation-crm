@@ -117,10 +117,9 @@ INDIAN_STATES = [
     "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Other"
 ]
 
-# --- OVERDUE CHECKER (USING EXPECTED DATE) ---
+# --- OVERDUE CHECKER ---
 def check_overdue_expected_dates(df):
     overdue_list = []
-    # Check both "Expected Date" and fallback to "Deliver Date" for old column header compatibility
     date_col = "Expected Date" if "Expected Date" in df.columns else ("Deliver Date" if "Deliver Date" in df.columns else None)
     
     if not df.empty and date_col and "Status" in df.columns:
@@ -131,7 +130,7 @@ def check_overdue_expected_dates(df):
             client_id = str(row.get("Client ID", ""))
             client_name = str(row.get("Client Name", ""))
             
-            if status != "Done" and exp_date_str:
+            if status != "Done" and exp_date_str and exp_date_str != "None":
                 try:
                     exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
                     if exp_date < today:
@@ -172,12 +171,10 @@ with tab_dash:
     df = crm_df.copy()
     
     if not df.empty and "Complaint Date" in df.columns:
-        # Date parsing for Month & Year Filters
         df['Parsed_Date'] = pd.to_datetime(df['Complaint Date'], errors='coerce')
         df['Year'] = df['Parsed_Date'].dt.year.fillna(0).astype(int)
         df['Month_Name'] = df['Parsed_Date'].dt.strftime('%B').fillna("Unknown")
         
-        # --- MONTH & YEAR FILTER ROW ---
         st.markdown("##### 📅 Filter History Data by Request Date")
         col_f1, col_f2 = st.columns(2)
         
@@ -188,7 +185,6 @@ with tab_dash:
                        "July", "August", "September", "October", "November", "December"]
         selected_month = col_f2.selectbox("Select Month", months_list)
         
-        # Apply Date Filters
         filtered_df = df.copy()
         if selected_year != "All Years":
             filtered_df = filtered_df[filtered_df['Year'] == int(selected_year)]
@@ -197,7 +193,6 @@ with tab_dash:
             
         st.markdown("---")
         
-        # Metrics Cards
         total_entries = len(filtered_df)
         running_count = len(filtered_df[filtered_df["Status"] == "Running"])
         hold_count = len(filtered_df[filtered_df["Status"] == "Hold"])
@@ -269,11 +264,14 @@ with tab_entry:
 
         col9, col10, col11 = st.columns(3)
         with col9:
-            start_date = st.date_input("Start Date", datetime.now())
+            add_start = st.checkbox("Set Start Date", value=True)
+            start_date_val = st.date_input("Start Date", datetime.now()) if add_start else ""
         with col10:
-            end_date = st.date_input("End Date", datetime.now())
+            add_end = st.checkbox("Set End Date", value=False)
+            end_date_val = st.date_input("End Date", datetime.now()) if add_end else ""
         with col11:
-            expected_date = st.date_input("Expected Date", datetime.now())
+            add_exp = st.checkbox("Set Expected Date", value=False)
+            expected_date_val = st.date_input("Expected Date", datetime.now()) if add_exp else ""
 
         remarks = st.text_area("Remarks / Initial Notes")
         submit_btn = st.form_submit_button("Submit & Save Record")
@@ -296,9 +294,9 @@ with tab_entry:
                 installer_name,
                 helper_name,
                 status,
-                str(start_date),
-                str(end_date),
-                str(expected_date),
+                str(start_date_val) if start_date_val else "",
+                str(end_date_val) if end_date_val else "",
+                str(expected_date_val) if expected_date_val else "",
                 remarks
             ]
             try:
@@ -336,7 +334,6 @@ with tab_update:
             st.markdown("---")
             st.subheader(f"✏️ Editing Details for: {selected_row.get('Client Name', '')} (`{selected_client_id}`)")
             
-            # Key to read safely from previous versions if needed
             prev_expected = selected_row.get("Expected Date", selected_row.get("Deliver Date", ""))
             
             with st.form("full_edit_form"):
@@ -369,16 +366,19 @@ with tab_update:
                     e_address = st.text_area("Address", value=str(selected_row.get("Address", "")), height=68)
 
                 st.markdown("---")
+                st.caption("ℹ️ Note: Leave Date fields empty if not applicable (YYYY-MM-DD format).")
                 col_e4, col_e5, col_e6 = st.columns(3)
                 with col_e4:
                     e_installer = st.text_input("Installer Name", value=str(selected_row.get("Installer", "")))
                     e_helper = st.text_input("Helper Name", value=str(selected_row.get("Helper", "")))
                 with col_e5:
-                    e_complaint_date = st.text_input("Request Date (YYYY-MM-DD)", value=str(selected_row.get("Complaint Date", "")))
-                    e_start_date = st.text_input("Start Date (YYYY-MM-DD)", value=str(selected_row.get("Start Date", "")))
+                    e_complaint_date = st.text_input("Request Date", value=str(selected_row.get("Complaint Date", "")))
+                    e_start_date = st.text_input("Start Date", value=str(selected_row.get("Start Date", "")))
                 with col_e6:
-                    e_expected_date = st.text_input("Expected Date (YYYY-MM-DD)", value=str(prev_expected))
-                    e_remarks = st.text_area("Remarks / Notes", value=str(selected_row.get("Remarks", "")), height=68)
+                    e_end_date = st.text_input("End Date", value=str(selected_row.get("End Date", "")))
+                    e_expected_date = st.text_input("Expected Date", value=str(prev_expected))
+
+                e_remarks = st.text_area("Remarks / Notes", value=str(selected_row.get("Remarks", "")), height=68)
 
                 save_update_btn = st.form_submit_button("💾 Save & Sync Changes")
                 
@@ -399,7 +399,7 @@ with tab_update:
                             e_helper,
                             e_status,
                             e_start_date,
-                            str(selected_row.get("End Date", "")),
+                            e_end_date,
                             e_expected_date,
                             e_remarks
                         ]
